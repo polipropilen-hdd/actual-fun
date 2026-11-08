@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Actual Fun — core-демо (каркас)</title>
+<link rel="stylesheet" href="styles/base.css">
+<link rel="stylesheet" href="styles/runtime.css">
+</head>
+<body>
+<header><strong>Actual Fun</strong> — демонстрация каркаса: реестр типов, валидация JSON, формы и рантайм. Оболочка конструктора и экспорт — следующий этап.</header>
+<main>
+
+<section>
+  <h2>1. Репозиторий зарегистрированных типов</h2>
+  <div id="types"></div>
+</section>
+
+<section>
+  <h2>2. Форма, сгенерированная из схемы типа «Тест: один ответ»</h2>
+  <div id="form"></div>
+  <pre id="formdata"></pre>
+</section>
+
+<section>
+  <h2>3. Загрузка JSON от нейросети → валидация (загрузка ≠ экспорт)</h2>
+  <textarea id="jsonin" rows="10" style="width:100%"></textarea><br>
+  <button id="loadbtn">Загрузить и проверить</button>
+  <pre id="loadout"></pre>
+</section>
+
+<section>
+  <h2>4. Рантайм: готовые блоки (drag-word, choice-single, choice-multi, drag-parts, reading)</h2>
+  <div id="player"></div>
+</section>
+
+</main>
+
+<script type="module">
+import { registerAllTypes, typeList } from './js/types/index.js';
+import { getType } from './js/types/registry.js';
+import { parseDocument } from './js/core/validate.js';
+import { renderForm } from './js/form/render.js';
+
+registerAllTypes();
+
+// --- 1. список типов ---
+const typesBox = document.getElementById('types');
+for (const t of typeList) {
+  const div = document.createElement('div');
+  div.textContent = `${t.icon} ${t.name} (${t.id})`;
+  typesBox.append(div);
+}
+
+// --- 2. форма из схемы ---
+const csType = getType('choice-single');
+const formData = csType.defaults();
+formData.question = 'Как по-английски «собака»?';
+formData.options = ['cat', 'dog', 'horse'];
+formData.correct = 1;
+document.getElementById('form').append(
+  renderForm(csType.schema, formData, (d) => {
+    document.getElementById('formdata').textContent = JSON.stringify(d, null, 1);
+  }),
+);
+document.getElementById('formdata').textContent = JSON.stringify(formData, null, 1);
+
+// --- 3. загрузка JSON ---
+const sample = {
+  format: 'lingua-exercise/1',
+  version: 1,
+  meta: { title: 'Пример от нейросети', language: 'en' },
+  blocks: [
+    { id: 'b1', type: 'reading', data: { heading: 'My Day', paragraphs: ['I wake up at seven.', 'I read ___ books every day.'] } },
+    { id: 'b2', type: 'choice-single', data: { question: 'Что значит «dog»?', options: ['кошка', 'собака', 'лошадь'], correct: 1 } },
+    { id: 'b3', type: 'choice-multi', data: { question: 'Выберите глаголы', options: ['run', 'blue', 'sing', 'table'], correct: [0, 2] } },
+    { id: 'b4', type: 'drag-word', data: { wordBank: 'per-blank', sentences: [
+      { text: 'Я читаю ___ и ___ каждый день.', blanks: [
+        { answer: 'книги', words: ['книги', 'хлеб'] },
+        { answer: 'статьи', words: ['статьи', 'кошки'] }] }
+    ] } },
+    { id: 'b5', type: 'drag-parts', data: { parts: ['Сегодня', 'идёт', 'дождь'] } },
+    { id: 'b6', type: 'match-columns', data: { pairs: [{ left: 'dog', right: 'собака' }, { left: 'cat', right: 'кошка' }] } },
+    { id: 'b7', type: 'no-such-type', data: {} },
+  ],
+};
+document.getElementById('jsonin').value = JSON.stringify(sample, null, 2);
+document.getElementById('loadbtn').onclick = () => {
+  const res = parseDocument(document.getElementById('jsonin').value);
+  const lines = [];
+  lines.push(res.ok ? '✔ OK — документ можно редактировать в конструкторе (экспорт — отдельное действие)' : '✘ ОШИБКИ:');
+  for (const e of res.errors || []) lines.push(`  [${e.path}] ${e.message}`);
+  for (const w of res.warnings || []) lines.push(`  предупреждение [${w.path}] ${w.message}`);
+  if (res.doc) lines.push(`Блоков принято: ${res.doc.blocks.length}`);
+  document.getElementById('loadout').textContent = lines.join('\n');
+};
+
+// --- 4. рантайм блоков ---
+// match-columns ещё не написан (следующий этап) — исключаем его из авто-рендера.
+const mods = {};
+for (const path of ['reading', 'choice-single', 'choice-multi', 'drag-word', 'drag-parts']) {
+  mods[path] = (await import(`./runtime/interactions/${path}.js`)).default;
+}
+const player = document.getElementById('player');
+for (const b of sample.blocks) {
+  const m = mods[b.type];
+  if (!m) continue;
+  const card = document.createElement('div');
+  card.className = 'af-block';
+  const h = document.createElement('h3');
+  h.textContent = `${getType(b.type).icon} ${getType(b.type).name}`;
+  const body = document.createElement('div');
+  const btns = document.createElement('div');
+  btns.className = 'af-row';
+  card.append(h, body, btns);
+  player.append(card);
+  const ctrl = m.mount(body, b);
+  if (m.scoreMax(b) > 0) {
+    const chk = Object.assign(document.createElement('button'), { className: 'af-checkbtn', textContent: 'Проверить' });
+    chk.onclick = () => {
+      const r = ctrl.check();
+      chk.textContent = `Проверить — получено ${r.earned} из ${m.scoreMax(b)}`;
+    };
+    const rv = Object.assign(document.createElement('button'), { textContent: 'Показать ответ' });
+    rv.onclick = () => ctrl.reveal && ctrl.reveal();
+    const rs = Object.assign(document.createElement('button'), { textContent: 'Начать заново' });
+    rs.onclick = () => { ctrl.reset && ctrl.reset(); chk.textContent = 'Проверить'; };
+    btns.append(chk, rv, rs);
+  }
+}
+</script>
+</body>
+</html>
