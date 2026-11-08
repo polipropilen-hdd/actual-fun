@@ -1,0 +1,9 @@
+/* styles/base.css — минимальные стили для core-демо (полная дизайн-система — следующий этап) */
+* { box-sizing: border-box; }
+body { font-family: system-ui, sans-serif; margin: 0; background: #f7f3ec; color: #2b2b2b; }
+header { padding: 12px 20px; background: #fff; border-bottom: 2px solid #e5dccd; }
+main { padding: 20px; max-width: 860px; margin: 0 auto; }
+section { background: #fff; border-radius: 14px; padding: 16px; margin-bottom: 20px; box-shadow: 0 2px 0 #e5dccd; }
+h2 { margin-top: 0; font-size: 18px; }
+pre { background: #2b2b2b; color: #9fe8a9; padding: 10px; border-radius: 8px; overflow: auto; font-size: 12px; }
+button { font: inherit; cursor: pointer; }
